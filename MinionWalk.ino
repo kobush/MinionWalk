@@ -32,8 +32,12 @@ int anklestep = 5;  // degree of movement of ankles
 
 uint8_t sequence = 0;  // variable to store current state of walking sequence
 uint32_t walktime = 0;  // variable to store delay untill next step sequence
+uint32_t autoRestTime = 0;
 
-int throttle = 10;
+#define MIN_THROTTLE 15
+#define MAX_THROTTLE 50
+
+int throttle = 0;
 int steering = 20;
 
 //Setup commands
@@ -103,7 +107,7 @@ void loop()
       // give 10 seconds to program
       ulProgramModeExitTime = millis() + 10000;
       gMode = MODE_PROGRAM;
-      throttle = 10; // stop
+      throttle = 0; // stop
  
       unThrottleCenter = unThrottleIn;
       unSteeringCenter = unSteeringIn;    
@@ -148,12 +152,20 @@ void loop()
   }
   else if (gMode == MODE_RUN)
   {
+    if (bUpdateFlags != 0)
+    {
+      // we got update so delay auto-rest
+      autoRestTime = millis() + 100;
+    }
+    
     if (bUpdateFlags & THROTTLE_FLAG)
     {
-        if (unThrottleIn > unThrottleCenter)
-          throttle = map(unThrottleIn, unThrottleMin, unThrottleCenter, 0,10);
+        if (unThrottleIn > unThrottleCenter + RC_DEADBAND)
+          throttle = map(unThrottleIn, unThrottleMin, unThrottleCenter, -MAX_THROTTLE, -MIN_THROTTLE);
+        else if (unThrottleIn < unThrottleCenter - RC_DEADBAND)
+          throttle = map(unThrottleIn, unThrottleCenter, unThrottleMax, MIN_THROTTLE, MAX_THROTTLE);
         else
-          throttle = map(unThrottleIn, unThrottleCenter, unThrottleMax, 10,20);
+          throttle = 0;
     }
   
     if (bUpdateFlags & STEERING_FLAG)
@@ -165,6 +177,12 @@ void loop()
     }
   }
     
+   if (autoRestTime < millis())
+   {
+     // go to rest if no update received in last 100ms
+     throttle = 0;
+   }
+   
   /*
     Serial.print("Throttle ");
     Serial.print(throttle, DEC);
@@ -178,7 +196,7 @@ void loop()
   // time to walk again
   if (walktime < millis())
   {
-    if(throttle == 10){
+    if(throttle == 0){
       Rest();
     }
     else{
@@ -186,7 +204,9 @@ void loop()
     }
     
     //delay(15);  // delay for servo to get in possiton.  this needs to be replaced with some type of counter function
-    walktime = millis() + 20;
+
+    // delay proportional to throttle
+    walktime = millis() + MAX_THROTTLE - abs(throttle);
   }
 }
 
@@ -243,7 +263,7 @@ void Walk() {  //Function to allow the robot to walk forwards and backwards
       
       }
       else{
-        if(throttle >= 10){
+        if(throttle >= 0){
           sequence = 1;
         }
         else{
@@ -260,7 +280,7 @@ void Walk() {  //Function to allow the robot to walk forwards and backwards
         hip = hip - hipstep;
       }
       else{  //once we reach 45, the sequence number is updated to 2
-         if(throttle >= 10){
+         if(throttle >= 0){
           sequence = 2;
         }
         else{
@@ -288,7 +308,7 @@ void Walk() {  //Function to allow the robot to walk forwards and backwards
       
     }
     else{
-         if(throttle >= 10){
+         if(throttle >= 0){
          sequence = 3;
           }
         else{
@@ -304,7 +324,7 @@ void Walk() {  //Function to allow the robot to walk forwards and backwards
      hip = hip + hipstep;
     }
     else{
-         if(throttle >= 10){
+         if(throttle >= 0){
           sequence = 0;
           }
         else{
